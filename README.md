@@ -9,7 +9,7 @@
 ---
 
 ## 🔗 Live Dashboard
-👉 **[View the deployed dashboard here](YOUR_STREAMLIT_URL)**
+👉 **[View the deployed dashboard here]([YOUR_STREAMLIT_URL](https://fraud-detection-intelligence.streamlit.app/))**
 
 ---
 

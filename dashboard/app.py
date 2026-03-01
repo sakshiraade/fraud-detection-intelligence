@@ -46,12 +46,31 @@ def load_data():
     return df
 
 @st.cache_data
+@st.cache_data
 def load_hourly_stats():
     import sqlite3
-    conn = sqlite3.connect(os.path.join(BASE_DIR, 'data/processed/fraud_warehouse.db'))
-    df = pd.read_sql("SELECT * FROM hourly_stats ORDER BY hour", conn)
-    conn.close()
-    return df
+    db_path = os.path.join(BASE_DIR, 'data/processed/fraud_warehouse.db')
+    
+    # If database exists, load from it
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql("SELECT * FROM hourly_stats ORDER BY hour", conn)
+        conn.close()
+        return df
+    
+    # Otherwise generate hourly stats from the CSV
+    data = load_data()
+    data['hour'] = (data['Time_scaled'] * data['Time_scaled'].std() // 3600).astype(int)
+    data['hour'] = (data.index // 100).astype(int) % 48
+    hourly = data.groupby('hour').agg(
+        total_transactions=('Class', 'count'),
+        fraud_count=('Class', 'sum'),
+        total_amount=('Amount_scaled', 'sum'),
+        avg_amount=('Amount_scaled', 'mean'),
+        max_amount=('Amount_scaled', 'max')
+    ).reset_index()
+    hourly['fraud_rate'] = hourly['fraud_count'] / hourly['total_transactions']
+    return hourly
 
 @st.cache_data
 def load_narratives():

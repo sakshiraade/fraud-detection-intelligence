@@ -38,7 +38,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv(os.path.join(BASE_DIR, 'data/processed/creditcard_features.csv'))
+    # Use sample for deployment — full dataset available locally
+    csv_path = os.path.join(BASE_DIR, 'data/processed/sample_features.csv')
+    if not os.path.exists(csv_path):
+        csv_path = os.path.join(BASE_DIR, 'data/processed/creditcard_features.csv')
+    df = pd.read_csv(csv_path)
     return df
 
 @st.cache_data

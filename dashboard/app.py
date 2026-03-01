@@ -8,12 +8,11 @@ import os
 import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from xgboost import XGBClassifier
 from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve
-from imblearn.over_sampling import SMOTE
 import warnings
 warnings.filterwarnings('ignore')
+
+# Base directory — must be first
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ─────────────────────────────
@@ -25,20 +24,11 @@ st.set_page_config(
     layout="wide"
 )
 
-
-
-import os
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 # ─────────────────────────────
 # Load Data
 # ─────────────────────────────
-# Dynamic base path — works both locally and on Streamlit Cloud
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 @st.cache_data
 def load_data():
-    # Use sample for deployment — full dataset available locally
     csv_path = os.path.join(BASE_DIR, 'data/processed/sample_features.csv')
     if not os.path.exists(csv_path):
         csv_path = os.path.join(BASE_DIR, 'data/processed/creditcard_features.csv')
@@ -46,21 +36,17 @@ def load_data():
     return df
 
 @st.cache_data
-@st.cache_data
 def load_hourly_stats():
     import sqlite3
     db_path = os.path.join(BASE_DIR, 'data/processed/fraud_warehouse.db')
-    
-    # If database exists, load from it
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
         df = pd.read_sql("SELECT * FROM hourly_stats ORDER BY hour", conn)
         conn.close()
         return df
-    
-    # Otherwise generate hourly stats from the CSV
+    # Generate on the fly if DB not available
     data = load_data()
-    data['hour'] = (data['Time_scaled'] * data['Time_scaled'].std() // 3600).astype(int)
+    data = data.copy()
     data['hour'] = (data.index // 100).astype(int) % 48
     hourly = data.groupby('hour').agg(
         total_transactions=('Class', 'count'),
@@ -75,22 +61,6 @@ def load_hourly_stats():
 @st.cache_data
 def load_narratives():
     path = os.path.join(BASE_DIR, 'reports/risk_narratives.json')
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            return json.load(f)
-    return []
-
-@st.cache_data
-def load_hourly_stats():
-    import sqlite3
-    conn = sqlite3.connect('../data/processed/fraud_warehouse.db')
-    df = pd.read_sql("SELECT * FROM hourly_stats ORDER BY hour", conn)
-    conn.close()
-    return df
-
-@st.cache_data
-def load_narratives():
-    path = '../reports/risk_narratives.json'
     if os.path.exists(path):
         with open(path, 'r') as f:
             return json.load(f)
@@ -124,89 +94,76 @@ if page == "🏠 Overview":
     st.markdown("*Real-time fraud detection using ML + AI risk narratives*")
     st.divider()
 
-    # Key metrics
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Transactions", f"{len(df):,}")
     col2.metric("Fraud Cases", f"{df['Class'].sum():,}")
     col3.metric("Fraud Rate", f"{df['Class'].mean():.3%}")
-    col4.metric("Avg Transaction", f"€{df['Amount'].mean():.2f}")
+    col4.metric("Avg Transaction", f"€{df['Amount_scaled'].mean():.2f}")
 
     st.divider()
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # Transaction volume over time
         fig = px.line(
             hourly, x='hour', y='total_transactions',
             title='Transaction Volume by Hour',
             color_discrete_sequence=['#4267B2']
         )
-        fig.update_layout(
-            xaxis_title='Hour', yaxis_title='Number of Transactions',
-            plot_bgcolor='white', height=350
-        )
+        fig.update_layout(xaxis_title='Hour', yaxis_title='Transactions',
+                          plot_bgcolor='white', height=350)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        # Fraud rate over time
         hourly['rolling_fraud'] = hourly['fraud_rate'].rolling(6, min_periods=1).mean()
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=hourly['hour'], y=hourly['fraud_rate'] * 100,
-            mode='lines', name='Hourly', line=dict(color='#E1306C', width=1),
-            opacity=0.4
+            mode='lines', name='Hourly',
+            line=dict(color='#E1306C', width=1), opacity=0.4
         ))
         fig.add_trace(go.Scatter(
             x=hourly['hour'], y=hourly['rolling_fraud'] * 100,
             mode='lines', name='6-hr Rolling Avg',
             line=dict(color='#E1306C', width=2.5)
         ))
-        fig.update_layout(
-            title='Fraud Rate Over Time (%)',
-            xaxis_title='Hour', yaxis_title='Fraud Rate (%)',
-            plot_bgcolor='white', height=350
-        )
+        fig.update_layout(title='Fraud Rate Over Time (%)',
+                          xaxis_title='Hour', yaxis_title='Fraud Rate (%)',
+                          plot_bgcolor='white', height=350)
         st.plotly_chart(fig, use_container_width=True)
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # Amount distribution
         fig = go.Figure()
         fig.add_trace(go.Histogram(
-            x=df[df.Class==0]['Amount'].clip(upper=500),
+            x=df[df.Class==0]['Amount_scaled'].clip(upper=5),
             nbinsx=50, name='Legitimate',
             marker_color='#4267B2', opacity=0.6,
             histnorm='probability density'
         ))
         fig.add_trace(go.Histogram(
-            x=df[df.Class==1]['Amount'].clip(upper=500),
+            x=df[df.Class==1]['Amount_scaled'].clip(upper=5),
             nbinsx=50, name='Fraud',
             marker_color='#E1306C', opacity=0.6,
             histnorm='probability density'
         ))
-        fig.update_layout(
-            barmode='overlay', title='Transaction Amount Distribution',
-            xaxis_title='Amount (€)', plot_bgcolor='white', height=350
-        )
+        fig.update_layout(barmode='overlay',
+                          title='Transaction Amount Distribution',
+                          xaxis_title='Amount (scaled)',
+                          plot_bgcolor='white', height=350)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        # Fraud by hour of day
         fraud_by_hour = df.groupby('hour_of_day')['Class'].agg(['sum','count'])
         fraud_by_hour['rate'] = fraud_by_hour['sum'] / fraud_by_hour['count'] * 100
         fig = px.bar(
             fraud_by_hour.reset_index(),
             x='hour_of_day', y='rate',
             title='Fraud Rate by Hour of Day (%)',
-            color='rate',
-            color_continuous_scale='Reds'
+            color='rate', color_continuous_scale='Reds'
         )
-        fig.update_layout(
-            xaxis_title='Hour of Day', yaxis_title='Fraud Rate (%)',
-            plot_bgcolor='white', height=350
-        )
+        fig.update_layout(xaxis_title='Hour of Day',
+                          yaxis_title='Fraud Rate (%)',
+                          plot_bgcolor='white', height=350)
         st.plotly_chart(fig, use_container_width=True)
 
 # ─────────────────────────────
@@ -219,23 +176,16 @@ elif page == "🔍 Transaction Explorer":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        class_filter = st.selectbox(
-            "Transaction Type",
-            ["All", "Legitimate Only", "Fraud Only"]
-        )
+        class_filter = st.selectbox("Transaction Type",
+                                    ["All", "Legitimate Only", "Fraud Only"])
     with col2:
-        min_amt, max_amt = st.slider(
-            "Amount Range (€)",
-            min_value=0, max_value=1000,
-            value=(0, 500)
-        )
+        min_amt, max_amt = st.slider("Amount Z-Score Range",
+                                     min_value=-5.0, max_value=5.0,
+                                     value=(-5.0, 5.0))
     with col3:
-        night_filter = st.selectbox(
-            "Time of Day",
-            ["All", "Night Only (10pm-5am)", "Day Only"]
-        )
+        night_filter = st.selectbox("Time of Day",
+                                    ["All", "Night Only (10pm-5am)", "Day Only"])
 
-    # Apply filters
     filtered = df.copy()
     if class_filter == "Legitimate Only":
         filtered = filtered[filtered.Class == 0]
@@ -246,7 +196,8 @@ elif page == "🔍 Transaction Explorer":
     elif night_filter == "Day Only":
         filtered = filtered[filtered.is_night == 0]
     filtered = filtered[
-        (filtered.Amount >= min_amt) & (filtered.Amount <= max_amt)
+        (filtered.amount_zscore >= min_amt) &
+        (filtered.amount_zscore <= max_amt)
     ]
 
     col1, col2, col3 = st.columns(3)
@@ -254,20 +205,18 @@ elif page == "🔍 Transaction Explorer":
     col2.metric("Fraud in Selection", f"{filtered['Class'].sum():,}")
     col3.metric("Fraud Rate", f"{filtered['Class'].mean():.3%}")
 
-    # Show sample
     st.subheader("Sample Transactions")
-    display_cols = ['Amount', 'hour_of_day', 'is_night',
+    display_cols = ['Amount_scaled', 'hour_of_day', 'is_night',
                     'amount_zscore', 'Class']
     st.dataframe(
         filtered[display_cols].head(100).rename(columns={
-            'Amount': 'Amount (€)',
+            'Amount_scaled': 'Amount (scaled)',
             'hour_of_day': 'Hour',
             'is_night': 'Night',
             'amount_zscore': 'Amount Z-Score',
             'Class': 'Fraud'
         }),
-        use_container_width=True,
-        height=400
+        use_container_width=True, height=400
     )
 
 # ─────────────────────────────
@@ -278,7 +227,6 @@ elif page == "📊 Model Comparison":
     st.markdown("*Logistic Regression vs XGBoost vs Neural Network*")
     st.divider()
 
-    # Hardcoded results from notebooks
     results = {
         'Model': ['Logistic Regression', 'XGBoost', 'Neural Network'],
         'ROC-AUC': [0.9667, 0.9755, 0.9828],
@@ -288,45 +236,31 @@ elif page == "📊 Model Comparison":
     }
     results_df = pd.DataFrame(results)
 
-    # Metrics table
     st.subheader("Performance Summary")
     st.dataframe(results_df.set_index('Model'), use_container_width=True)
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # ROC AUC comparison
-        fig = px.bar(
-            results_df, x='Model', y='ROC-AUC',
-            title='ROC-AUC Score by Model',
-            color='Model',
-            color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C']
-        )
-        fig.update_layout(
-            yaxis_range=[0.95, 1.0],
-            plot_bgcolor='white', showlegend=False
-        )
+        fig = px.bar(results_df, x='Model', y='ROC-AUC',
+                     title='ROC-AUC Score by Model', color='Model',
+                     color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C'])
+        fig.update_layout(yaxis_range=[0.95, 1.0],
+                          plot_bgcolor='white', showlegend=False)
         fig.update_traces(text=results_df['ROC-AUC'].round(4),
-                         textposition='outside')
+                          textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        # Average Precision comparison
-        fig = px.bar(
-            results_df, x='Model', y='Avg Precision',
-            title='Average Precision Score by Model\n(Key Metric for Fraud)',
-            color='Model',
-            color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C']
-        )
-        fig.update_layout(
-            yaxis_range=[0.6, 1.0],
-            plot_bgcolor='white', showlegend=False
-        )
+        fig = px.bar(results_df, x='Model', y='Avg Precision',
+                     title='Average Precision (Key Metric for Fraud)',
+                     color='Model',
+                     color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C'])
+        fig.update_layout(yaxis_range=[0.6, 1.0],
+                          plot_bgcolor='white', showlegend=False)
         fig.update_traces(text=results_df['Avg Precision'].round(4),
-                         textposition='outside')
+                          textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
 
-    # Verdict
     st.divider()
     st.subheader("🏆 Model Selection Verdict")
     col1, col2 = st.columns(2)
@@ -355,10 +289,9 @@ elif page == "🚨 Risk Monitor":
     st.markdown("*High-risk transactions flagged by the neural network*")
     st.divider()
 
-    # Load neural network predictions
     @st.cache_data
     def get_predictions():
-        feature_cols = [c for c in df.columns if c not in ['Class','Time','Amount']]
+        feature_cols = [c for c in df.columns if c not in ['Class', 'Time', 'Amount']]
         X = df[feature_cols]
         y = df['Class']
         _, X_test, _, y_test = train_test_split(
@@ -380,10 +313,13 @@ elif page == "🚨 Risk Monitor":
             def forward(self, x):
                 return self.network(x)
 
+        model_path = os.path.join(BASE_DIR, 'src/fraud_model.pth')
+        if not os.path.exists(model_path):
+            return None
+
         device = torch.device('cpu')
         model = FraudNet(input_dim=len(feature_cols)).to(device)
-        model.load_state_dict(torch.load(
-    os.path.join(BASE_DIR, 'src/fraud_model.pth'), map_location=device))
+        model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
 
         X_test_t = torch.FloatTensor(X_test.values)
@@ -393,10 +329,8 @@ elif page == "🚨 Risk Monitor":
         result = X_test.copy().reset_index(drop=True)
         result['fraud_probability'] = proba
         result['actual_fraud'] = y_test.values
-        result['Amount'] = df.loc[X_test.index, 'Amount'].values
         result['risk_level'] = pd.cut(
-            proba,
-            bins=[0, 0.3, 0.6, 0.8, 1.0],
+            proba, bins=[0, 0.3, 0.6, 0.8, 1.0],
             labels=['Low', 'Medium', 'High', 'Critical']
         )
         return result
@@ -404,54 +338,50 @@ elif page == "🚨 Risk Monitor":
     with st.spinner('Loading predictions...'):
         preds = get_predictions()
 
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Critical Risk (>80%)",
-                f"{(preds.fraud_probability > 0.8).sum():,}")
-    col2.metric("High Risk (60-80%)",
-                f"{((preds.fraud_probability > 0.6) & (preds.fraud_probability <= 0.8)).sum():,}")
-    col3.metric("True Frauds Caught",
-                f"{((preds.fraud_probability > 0.5) & (preds.actual_fraud == 1)).sum():,}")
-    col4.metric("False Positives",
-                f"{((preds.fraud_probability > 0.5) & (preds.actual_fraud == 0)).sum():,}")
+    if preds is None:
+        st.warning("Model file not found. Please ensure src/fraud_model.pth exists.")
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Critical Risk (>80%)",
+                    f"{(preds.fraud_probability > 0.8).sum():,}")
+        col2.metric("High Risk (60-80%)",
+                    f"{((preds.fraud_probability > 0.6) & (preds.fraud_probability <= 0.8)).sum():,}")
+        col3.metric("True Frauds Caught",
+                    f"{((preds.fraud_probability > 0.5) & (preds.actual_fraud == 1)).sum():,}")
+        col4.metric("False Positives",
+                    f"{((preds.fraud_probability > 0.5) & (preds.actual_fraud == 0)).sum():,}")
 
-    # Risk distribution
-    col1, col2 = st.columns(2)
-    with col1:
-        risk_counts = preds['risk_level'].value_counts()
-        fig = px.pie(
-            values=risk_counts.values,
-            names=risk_counts.index,
-            title='Transaction Risk Distribution',
-            color_discrete_sequence=['#44BBA4','#F18F01','#E1306C','#C73E1D']
+        col1, col2 = st.columns(2)
+        with col1:
+            risk_counts = preds['risk_level'].value_counts()
+            fig = px.pie(
+                values=risk_counts.values, names=risk_counts.index,
+                title='Transaction Risk Distribution',
+                color_discrete_sequence=['#44BBA4','#F18F01','#E1306C','#C73E1D']
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            fig = px.histogram(
+                preds, x='fraud_probability', nbins=50,
+                title='Fraud Probability Distribution',
+                color_discrete_sequence=['#E1306C']
+            )
+            fig.add_vline(x=0.5, line_dash='dash',
+                          annotation_text='Decision Threshold')
+            fig.update_layout(plot_bgcolor='white')
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("🚨 Critical Risk Transactions (>80% probability)")
+        critical = preds[preds.fraud_probability > 0.8][
+            ['amount_zscore', 'hour_of_day', 'is_night',
+             'fraud_probability', 'actual_fraud']
+        ].sort_values('fraud_probability', ascending=False).head(20)
+        critical.columns = ['Z-Score', 'Hour', 'Night', 'Fraud Prob', 'Actual Fraud']
+        st.dataframe(
+            critical.style.background_gradient(subset=['Fraud Prob'], cmap='Reds'),
+            use_container_width=True
         )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        fig = px.histogram(
-            preds, x='fraud_probability',
-            nbins=50, title='Fraud Probability Distribution',
-            color_discrete_sequence=['#E1306C']
-        )
-        fig.add_vline(x=0.5, line_dash='dash',
-                      annotation_text='Decision Threshold')
-        fig.update_layout(plot_bgcolor='white')
-        st.plotly_chart(fig, use_container_width=True)
-
-    # High risk table
-    st.subheader("🚨 Critical Risk Transactions (>80% probability)")
-    critical = preds[preds.fraud_probability > 0.8][
-        ['Amount', 'hour_of_day', 'is_night',
-         'amount_zscore', 'fraud_probability', 'actual_fraud']
-    ].sort_values('fraud_probability', ascending=False).head(20)
-
-    critical.columns = ['Amount (€)', 'Hour', 'Night',
-                        'Z-Score', 'Fraud Prob', 'Actual Fraud']
-    st.dataframe(
-        critical.style.background_gradient(
-            subset=['Fraud Prob'], cmap='Reds'),
-        use_container_width=True
-    )
 
 # ─────────────────────────────
 # Page 5: AI Risk Narratives
@@ -462,15 +392,15 @@ elif page == "🤖 AI Risk Narratives":
     st.divider()
 
     st.info("""
-    **How this works:** The neural network flags high-risk transactions and 
-    assigns a fraud probability. Claude then analyzes the top risk signals 
-    and generates a compliance-ready narrative explaining WHY the transaction 
+    **How this works:** The neural network flags high-risk transactions and
+    assigns a fraud probability. Claude then analyzes the top risk signals
+    and generates a compliance-ready narrative explaining WHY the transaction
     was flagged and what action to take.
     """)
 
     if narratives:
         for n in narratives:
-            prob = n['fraud_probability'] if 'fraud_probability' in n else n.get('fraud_prob', 0)
+            prob = n.get('fraud_probability', n.get('fraud_prob', 0))
             color = "🔴" if prob > 0.9 else "🟠"
             with st.expander(
                 f"{color} Transaction #{n['transaction']} — "

@@ -29,9 +29,6 @@ st.set_page_config(
 
 import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-st.write(f"BASE_DIR: {BASE_DIR}")
-st.write(f"DB path: {os.path.join(BASE_DIR, 'data/processed/fraud_warehouse.db')}")
-st.write(f"DB exists: {os.path.exists(os.path.join(BASE_DIR, 'data/processed/fraud_warehouse.db'))}")
 
 # ─────────────────────────────
 # Load Data

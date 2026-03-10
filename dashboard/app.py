@@ -698,10 +698,48 @@ elif page == "🔍 Transaction Explorer":
         'amount_zscore': 'Amount Anomaly Score',
         'Class':         'Fraud'
     })
-    dark_table(display, fmt={
+    styler = display.style.format({
         'Txn Amount':          '{:.3f}',
         'Amount Anomaly Score':'{:.3f}'
-    })
+    }).set_properties(**{
+        'background-color': '#1c2130',
+        'color':            '#e2e8f0',
+        'border':           '1px solid #2d3748',
+        'padding':          '8px 16px',
+        'font-size':        '13px',
+        'white-space':      'nowrap',       # prevent column wrapping
+        'min-width':        '140px',        # each column has breathing room
+    }).set_table_styles([
+        {'selector': 'th', 'props': [
+            ('background-color', '#161b27'),
+            ('color',            '#a0aec0'),
+            ('border',           '1px solid #2d3748'),
+            ('padding',          '10px 16px'),
+            ('font-size',        '13px'),
+            ('white-space',      'nowrap'),
+            ('min-width',        '140px'),
+        ]},
+        {'selector': 'table', 'props': [
+            ('width',           '100%'),
+            ('border-collapse', 'collapse'),
+        ]},
+        {'selector': 'tr:hover td', 'props': [
+            ('background-color', '#2d3748'),
+        ]},
+    ])
+    # Wrap in a div with both horizontal scroll + fixed-height vertical scroll
+    html = styler.to_html()
+    st.markdown(
+        f"""<div style='
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 420px;
+            border: 1px solid #2d3748;
+            border-radius: 8px;
+            width: 100%;
+        '>{html}</div>""",
+        unsafe_allow_html=True
+    )
 
 # ══════════════════════════════════════════════════════════════
 # PAGE 4 — Model Comparison

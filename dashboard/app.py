@@ -463,10 +463,19 @@ elif page == "🎯 Live Fraud Detector":
         }
         </style>""", unsafe_allow_html=True)
 
-        if st.button("🎲 Sample New Transaction", use_container_width=True):
-            st.session_state.sampled_idx = int(np.random.randint(0, len(df)))
-            for k in ['live_narrative','last_result']:
-                st.session_state.pop(k, None)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("🎲 Sample Random", use_container_width=True):
+                st.session_state.sampled_idx = int(np.random.randint(0, len(df)))
+                for k in ['live_narrative','last_result']:
+                    st.session_state.pop(k, None)
+        with col_b:
+            if st.button("🔴 Sample Fraud", use_container_width=True,
+                         help="Pick a known fraud transaction for demo"):
+                fraud_indices = df[df['Class'] == 1].index.tolist()
+                st.session_state.sampled_idx = int(np.random.choice(fraud_indices))
+                for k in ['live_narrative','last_result']:
+                    st.session_state.pop(k, None)
 
         if 'sampled_idx' not in st.session_state:
             st.session_state.sampled_idx = int(np.random.randint(0, len(df)))

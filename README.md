@@ -59,6 +59,16 @@ At XGBoost's production threshold, this system would flag approximately **1,400 
 - SHAP explainability on XGBoost
 - Apple Silicon MPS acceleration for PyTorch training
 
+## 🧠 Key Design Decisions
+
+| Decision | Choice | Why |
+|---|---|---|
+| Evaluation metric | Average Precision | AUC-ROC is inflated by true negatives at 0.17% fraud rate |
+| Class imbalance | SMOTE on train set only | Applying SMOTE before splitting leaks synthetic data into evaluation |
+| Production model | XGBoost over NN | Better AP, faster inference, SHAP explainability for compliance |
+| Feature engineering | Velocity windows | Captures card-testing behavior invisible in individual rows |
+| LLM layer | Claude API narratives | Bridges model output to analyst workflow — the "last mile" problem |
+
 ### 4. 🧠 LLM Risk Narrative Generator
 - Claude API generates compliance-ready risk assessments
 - Identifies fraud patterns (probe transactions, velocity anomalies)
@@ -85,6 +95,16 @@ At XGBoost's production threshold, this system would flag approximately **1,400 
 | Explainability | **SHAP** ✅ | Complex |
 
 > *XGBoost chosen for production — Average Precision is the correct metric for severe class imbalance, and SHAP explainability meets compliance requirements.*
+> *Note: While the Neural Network shows higher per-class precision, XGBoost's superior Average Precision (0.853 vs 0.823) means it catches more actual fraud across the full operating range — the metric that matters for triage queue optimization at 0.17% fraud prevalence.*
+
+---
+
+## 🔭 Limitations & Future Work
+
+- **Dataset scope:** ULB dataset is 2013 European card data — modern fraud patterns (CNP fraud, account takeover) would require different feature sets
+- **Static model:** No concept drift detection or online learning — a production system would need monitoring for distribution shift
+- **Graph features:** Fraud rings have network signatures (shared device IDs, IP clusters) not capturable with tabular features alone — a graph neural network layer would be the next evolution
+- **Threshold tuning:** Current evaluation uses default thresholds; operational deployment would require calibrating thresholds to specific business cost ratios (false negative cost vs. false positive cost)
 
 ---
 

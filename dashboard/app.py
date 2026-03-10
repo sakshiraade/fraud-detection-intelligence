@@ -720,7 +720,7 @@ elif page == "🔍 Transaction Explorer":
             ('min-width',        '140px'),
         ]},
         {'selector': 'table', 'props': [
-            ('width',           '100%'),
+            ('width',           'auto'),        # fit to content, no stretching
             ('border-collapse', 'collapse'),
         ]},
         {'selector': 'tr:hover td', 'props': [

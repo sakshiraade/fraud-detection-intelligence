@@ -463,6 +463,21 @@ elif page == "🎯 Live Fraud Detector":
         }
         </style>""", unsafe_allow_html=True)
 
+        st.markdown("""
+        <style>
+        div[data-testid="stButton"] > button {
+            background-color: #2d3748 !important;
+            color: #fafafa !important;
+            border: 1px solid #4a5568 !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+        }
+        div[data-testid="stButton"] > button:hover {
+            background-color: #3a4a5c !important;
+            border-color: #718096 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🎲 Sample Random", use_container_width=True):

@@ -890,7 +890,7 @@ elif page == "📊 Model Comparison":
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=rv, y=pv, mode='lines',
-            name=f'Neural Network (AP={ap_nn:.3f})',
+            name=f'Neural Network (AP={float(ap_nn):.3f})',
             line=dict(color='#E1306C', width=2.5)
         ))
         fig.add_trace(go.Scatter(
@@ -1077,10 +1077,6 @@ elif page == "🤖 AI Risk Narratives":
                 f"{color} Transaction #{n['transaction']} — "
                 f"Fraud Probability: {prob:.1%}"
             ):
-                st.markdown(
-                    f"<div style='color:#e2e8f0;font-size:14px;line-height:1.7'>"
-                    f"{n['narrative']}</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(n['narrative'])
     else:
         st.warning("No narratives found. Run notebook 05_llm_risk_narrative.ipynb first.")

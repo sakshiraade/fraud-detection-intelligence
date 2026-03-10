@@ -348,6 +348,17 @@ st.sidebar.metric("Fraud Rate",         f"{df['Class'].mean():.3%}")
 if page == "🏠 Overview":
     st.title("🔍 Credit Card Fraud Detection Intelligence")
     st.markdown("*Real-time fraud detection using ML + AI risk narratives — 10K transaction sample from ULB dataset*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #4267B2;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    This dashboard presents an end-to-end credit card fraud detection system built on the
+    <b style='color:#fafafa'>ULB Credit Card Fraud dataset</b> (284,807 real European transactions, 0.17% fraud rate).
+    Explore transaction patterns in the Overview, test the live model in the Fraud Detector,
+    compare ML models, monitor high-risk alerts, and read AI-generated compliance narratives —
+    all in one place.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     c1,c2,c3,c4 = st.columns(4)
@@ -417,6 +428,17 @@ if page == "🏠 Overview":
 elif page == "🎯 Live Fraud Detector":
     st.title("🎯 Live Fraud Detector")
     st.markdown("*Sample a real transaction, tweak behavioral signals, get an AI-powered verdict*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #E1306C;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    Interact directly with the trained neural network. Sample any transaction from the dataset,
+    adjust the <b style='color:#fafafa'>hour of day</b> and <b style='color:#fafafa'>amount anomaly score</b>,
+    and watch the fraud probability update in real time. Then generate a
+    <b style='color:#fafafa'>Claude-powered compliance narrative</b> explaining exactly why the
+    transaction was flagged — the same kind of output a fraud analyst would use to make a decision.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     st.info(
@@ -599,6 +621,16 @@ elif page == "🎯 Live Fraud Detector":
 elif page == "🔍 Transaction Explorer":
     st.title("🔍 Transaction Explorer")
     st.markdown("*Filter transactions — watch the insights update dynamically*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #44BBA4;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    Slice the dataset by transaction type, time of day, and amount anomaly score.
+    The <b style='color:#fafafa'>insight cards update dynamically</b> as you filter —
+    showing how fraud rate, night-time concentration, and amount patterns shift across segments.
+    This mirrors how a fraud analyst would isolate high-risk cohorts before building detection rules.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     c1, c2, c3 = st.columns(3)
@@ -677,6 +709,20 @@ elif page == "🔍 Transaction Explorer":
 elif page == "📊 Model Comparison":
     st.title("📊 Model Comparison")
     st.markdown("*Logistic Regression vs XGBoost vs Neural Network*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #F18F01;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    Three models were benchmarked — each chosen deliberately.
+    <b style='color:#fafafa'>Logistic Regression</b> sets the interpretable baseline.
+    <b style='color:#fafafa'>XGBoost</b> was selected for production based on
+    Average Precision (0.853) and SHAP explainability.
+    <b style='color:#fafafa'>PyTorch Neural Network</b> achieved the highest ROC-AUC but was ruled out
+    for production due to slower inference and limited explainability.
+    The SHAP chart, Precision-Recall curve, and interactive Confusion Matrix show exactly
+    why these trade-offs matter at a 0.17% fraud rate.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     rdf = pd.DataFrame({
@@ -855,6 +901,17 @@ elif page == "📊 Model Comparison":
 elif page == "🚨 Risk Monitor":
     st.title("🚨 Risk Monitor")
     st.markdown("*High-risk transactions flagged by the neural network*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #C73E1D;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    This page simulates a <b style='color:#fafafa'>live fraud operations triage queue</b>.
+    The neural network scores every transaction in the test set and surfaces those above 80% probability
+    for immediate review. Metrics show how many critical, high-risk, and borderline transactions
+    the model flagged — and how many actual frauds it caught vs. missed.
+    This is the operational layer that sits between model output and analyst action.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     if preds is None:
@@ -922,6 +979,19 @@ elif page == "🚨 Risk Monitor":
 elif page == "🤖 AI Risk Narratives":
     st.title("🤖 AI-Generated Risk Narratives")
     st.markdown("*Claude API translates model signals into plain-English risk assessments*")
+    st.markdown("""
+    <div style='background:#1c2130;border-left:4px solid #9b59b6;padding:14px 18px;
+    border-radius:6px;margin-bottom:12px'>
+    <p style='color:#c8d0e0;margin:0;font-size:14px;line-height:1.6'>
+    A fraud probability score alone isn't enough — a risk analyst needs to know <i>why</i>.
+    This page uses the <b style='color:#fafafa'>Claude API</b> to translate raw SHAP signals
+    into compliance-ready narratives: what pattern was detected, what fraud behavior it resembles,
+    and what action to take. Each narrative ends with a clear
+    <b style='color:#fafafa'>APPROVE / REVIEW / BLOCK</b> decision.
+    This is the <b style='color:#fafafa'>"last mile"</b> of the fraud detection pipeline —
+    bridging model output to human judgment.
+    </p></div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     st.info("""

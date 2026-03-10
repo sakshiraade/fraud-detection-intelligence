@@ -176,4 +176,4 @@ ANTHROPIC_API_KEY=your_key_here
 
 Built by **Sakshi Aade** as a portfolio project demonstrating end-to-end fraud detection combining classical ML, deep learning, and LLM integration.
 
-🔗 [LinkedIn](https://www.linkedin.com/in/sakshi-aade/) | 📧 sakshiaade03@gmail
+🔗 [LinkedIn](https://www.linkedin.com/in/sakshi-aade/) | 📧 sakshiaade03@gmail.com

@@ -463,34 +463,41 @@ elif page == "🎯 Live Fraud Detector":
         }
         </style>""", unsafe_allow_html=True)
 
+        col_a, col_b = st.columns(2)
+        with col_a:
+            sample_random = st.button("🎲 Sample Random", use_container_width=True, key="btn_random")
+        with col_b:
+            sample_fraud = st.button("🔴 Sample Fraud", use_container_width=True, key="btn_fraud")
+
+        # Force identical dark styling on both buttons via nth-child targeting
         st.markdown("""
         <style>
-        div[data-testid="stButton"] > button {
+        [data-testid="stButton"][data-key="btn_random"] button,
+        [data-testid="stButton"][data-key="btn_fraud"] button {
             background-color: #2d3748 !important;
             color: #fafafa !important;
             border: 1px solid #4a5568 !important;
             border-radius: 8px !important;
             font-weight: 500 !important;
+            width: 100% !important;
         }
-        div[data-testid="stButton"] > button:hover {
+        [data-testid="stButton"][data-key="btn_random"] button:hover,
+        [data-testid="stButton"][data-key="btn_fraud"] button:hover {
             background-color: #3a4a5c !important;
             border-color: #718096 !important;
         }
         </style>
         """, unsafe_allow_html=True)
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("🎲 Sample Random", use_container_width=True):
-                st.session_state.sampled_idx = int(np.random.randint(0, len(df)))
-                for k in ['live_narrative','last_result']:
-                    st.session_state.pop(k, None)
-        with col_b:
-            if st.button("🔴 Sample Fraud", use_container_width=True,
-                         help="Pick a known fraud transaction for demo"):
-                fraud_indices = df[df['Class'] == 1].index.tolist()
-                st.session_state.sampled_idx = int(np.random.choice(fraud_indices))
-                for k in ['live_narrative','last_result']:
-                    st.session_state.pop(k, None)
+
+        if sample_random:
+            st.session_state.sampled_idx = int(np.random.randint(0, len(df)))
+            for k in ['live_narrative','last_result']:
+                st.session_state.pop(k, None)
+        if sample_fraud:
+            fraud_indices = df[df['Class'] == 1].index.tolist()
+            st.session_state.sampled_idx = int(np.random.choice(fraud_indices))
+            for k in ['live_narrative','last_result']:
+                st.session_state.pop(k, None)
 
         if 'sampled_idx' not in st.session_state:
             st.session_state.sampled_idx = int(np.random.randint(0, len(df)))

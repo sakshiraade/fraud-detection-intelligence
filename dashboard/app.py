@@ -180,17 +180,20 @@ def generate_live_narrative(res, fraud_prob, decision):
         if not api_key:
             return "⚠️ Add ANTHROPIC_API_KEY to Streamlit secrets to enable live narratives."
         client = anthropic.Anthropic(api_key=api_key)
+        time_label   = "(Late Night ⚠️)" if res['is_night'] else "(Daytime)"
+        amount_label = (
+            "(Unusually high ⚠️)" if res['amount_z'] > 2
+            else "(Unusually low — possible card-test ⚠️)" if res['amount_z'] < -1
+            else "(Normal range)"
+        )
         prompt = f"""You are a fraud risk analyst at a major financial institution.
 
 Analyze this flagged credit card transaction and produce a compliance-ready risk assessment.
 
 Transaction Signals:
 - Fraud Probability : {fraud_prob:.1%}
-- Hour of Day       : {res['hour']} {'(Late Night ⚠️)' if res['is_night'] else '(Daytime)'}
-- Amount Z-Score    : {res['amount_z']:.2f} \
-{'(Unusually high ⚠️)' if res['amount_z'] > 2 \
- else '(Unusually low — possible card-test ⚠️)' if res['amount_z'] < -1 \
- else '(Normal range)'}
+- Hour of Day       : {res['hour']} {time_label}
+- Amount Z-Score    : {res['amount_z']:.2f} {amount_label}
 - V14 Signal        : {res['v14']:.3f}  (strongest fraud predictor in this model)
 - V4  Signal        : {res['v4']:.3f}
 - Decision          : {decision}

@@ -8,11 +8,11 @@ import os
 import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve
+from sklearn.metrics import (roc_auc_score, average_precision_score,
+                             precision_recall_curve, confusion_matrix)
 import warnings
 warnings.filterwarnings('ignore')
 
-# Base directory — must be first
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ─────────────────────────────
@@ -32,8 +32,7 @@ def load_data():
     csv_path = os.path.join(BASE_DIR, 'data/processed/sample_features.csv')
     if not os.path.exists(csv_path):
         csv_path = os.path.join(BASE_DIR, 'data/processed/creditcard_features.csv')
-    df = pd.read_csv(csv_path)
-    return df
+    return pd.read_csv(csv_path)
 
 @st.cache_data
 def load_hourly_stats():
@@ -44,8 +43,7 @@ def load_hourly_stats():
         df = pd.read_sql("SELECT * FROM hourly_stats ORDER BY hour", conn)
         conn.close()
         return df
-    data = load_data()
-    data = data.copy()
+    data = load_data().copy()
     data['hour'] = (data.index // 100).astype(int) % 48
     hourly = data.groupby('hour').agg(
         total_transactions=('Class', 'count'),
@@ -65,9 +63,67 @@ def load_narratives():
             return json.load(f)
     return []
 
-df = load_data()
-hourly = load_hourly_stats()
+# ─────────────────────────────
+# Neural Network Definition
+# (top-level so it's available everywhere)
+# ─────────────────────────────
+class FraudNet(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, 256), nn.BatchNorm1d(256),
+            nn.ReLU(), nn.Dropout(0.3),
+            nn.Linear(256, 128), nn.BatchNorm1d(128),
+            nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(128, 64), nn.BatchNorm1d(64),
+            nn.ReLU(), nn.Dropout(0.1),
+            nn.Linear(64, 1), nn.Sigmoid()
+        )
+    def forward(self, x):
+        return self.network(x)
+
+# ─────────────────────────────
+# get_predictions — top-level so
+# Model Comparison + Risk Monitor
+# share the same cached result
+# ─────────────────────────────
+@st.cache_data
+def get_predictions():
+    data = load_data()
+    feature_cols = [c for c in data.columns if c not in ['Class', 'Time', 'Amount']]
+    X = data[feature_cols]
+    y = data['Class']
+    _, X_test, _, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    model_path = os.path.join(BASE_DIR, 'src/fraud_model.pth')
+    if not os.path.exists(model_path):
+        return None, None, None
+
+    device = torch.device('cpu')
+    model = FraudNet(input_dim=len(feature_cols)).to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+
+    with torch.no_grad():
+        proba = model(
+            torch.FloatTensor(X_test.values)
+        ).squeeze().cpu().numpy()
+
+    result = X_test.copy().reset_index(drop=True)
+    result['fraud_probability'] = proba
+    result['actual_fraud'] = y_test.values
+    result['risk_level'] = pd.cut(
+        proba, bins=[0, 0.3, 0.6, 0.8, 1.0],
+        labels=['Low', 'Medium', 'High', 'Critical']
+    )
+    return result, proba, y_test.values
+
+df       = load_data()
+hourly   = load_hourly_stats()
 narratives = load_narratives()
+preds, nn_proba, nn_labels = get_predictions()
 
 # ─────────────────────────────
 # Sidebar Navigation
@@ -82,34 +138,31 @@ page = st.sidebar.radio(
 st.sidebar.divider()
 st.sidebar.markdown("**Dataset Stats**")
 st.sidebar.metric("Total Transactions", f"{len(df):,}")
-st.sidebar.metric("Fraud Cases", f"{df['Class'].sum():,}")
-st.sidebar.metric("Fraud Rate", f"{df['Class'].mean():.3%}")
+st.sidebar.metric("Fraud Cases",        f"{df['Class'].sum():,}")
+st.sidebar.metric("Fraud Rate",         f"{df['Class'].mean():.3%}")
 
 # ─────────────────────────────
 # Page 1: Overview
 # ─────────────────────────────
 if page == "🏠 Overview":
     st.title("🔍 Credit Card Fraud Detection Intelligence")
-    # FIX: Added "(10K sample)" to clarify fraud rate discrepancy vs full dataset
     st.markdown("*Real-time fraud detection using ML + AI risk narratives — 10K transaction sample from ULB dataset*")
     st.divider()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Transactions", f"{len(df):,}")
-    col2.metric("Fraud Cases", f"{df['Class'].sum():,}")
-    col3.metric("Fraud Rate", f"{df['Class'].mean():.3%}")
-    # FIX: Replaced €0.01 scaled amount bug with meaningful KPI
-    col4.metric("Peak Fraud Hour", "2 AM", help="Hour with highest fraud rate in dataset")
+    col2.metric("Fraud Cases",        f"{df['Class'].sum():,}")
+    col3.metric("Fraud Rate",         f"{df['Class'].mean():.3%}")
+    col4.metric("Peak Fraud Hour",    "2 AM",
+                help="Hour with highest fraud rate in dataset")
 
     st.divider()
 
     col1, col2 = st.columns(2)
     with col1:
-        fig = px.line(
-            hourly, x='hour', y='total_transactions',
-            title='Transaction Volume by Hour',
-            color_discrete_sequence=['#4267B2']
-        )
+        fig = px.line(hourly, x='hour', y='total_transactions',
+                      title='Transaction Volume by Hour',
+                      color_discrete_sequence=['#4267B2'])
         fig.update_layout(xaxis_title='Hour', yaxis_title='Transactions',
                           plot_bgcolor='white', height=350)
         st.plotly_chart(fig, use_container_width=True)
@@ -204,19 +257,17 @@ elif page == "🔍 Transaction Explorer":
     col1, col2, col3 = st.columns(3)
     col1.metric("Transactions Shown", f"{len(filtered):,}")
     col2.metric("Fraud in Selection", f"{filtered['Class'].sum():,}")
-    col3.metric("Fraud Rate", f"{filtered['Class'].mean():.3%}")
+    col3.metric("Fraud Rate",         f"{filtered['Class'].mean():.3%}")
 
-    # FIX: Friendlier column names for non-technical viewers
     st.subheader("Sample Transactions")
-    display_cols = ['Amount_scaled', 'hour_of_day', 'is_night',
-                    'amount_zscore', 'Class']
+    display_cols = ['Amount_scaled', 'hour_of_day', 'is_night', 'amount_zscore', 'Class']
     st.dataframe(
         filtered[display_cols].head(100).rename(columns={
-            'Amount_scaled': 'Txn Amount',
-            'hour_of_day': 'Hour',
-            'is_night': 'Late Night?',
-            'amount_zscore': 'Amount Anomaly Score',
-            'Class': 'Fraud'
+            'Amount_scaled':  'Txn Amount',
+            'hour_of_day':    'Hour',
+            'is_night':       'Late Night?',
+            'amount_zscore':  'Amount Anomaly Score',
+            'Class':          'Fraud'
         }),
         use_container_width=True, height=400
     )
@@ -229,14 +280,13 @@ elif page == "📊 Model Comparison":
     st.markdown("*Logistic Regression vs XGBoost vs Neural Network*")
     st.divider()
 
-    results = {
-        'Model': ['Logistic Regression', 'XGBoost', 'Neural Network'],
-        'ROC-AUC': [0.9667, 0.9755, 0.9828],
-        'Avg Precision': [0.7411, 0.8525, 0.8226],
-        'Recall (Fraud)': [0.89, 0.88, 0.86],
-        'Precision (Fraud)': [0.51, 0.41, 0.73]
-    }
-    results_df = pd.DataFrame(results)
+    results_df = pd.DataFrame({
+        'Model':             ['Logistic Regression', 'XGBoost', 'Neural Network'],
+        'ROC-AUC':           [0.9667, 0.9755, 0.9828],
+        'Avg Precision':     [0.7411, 0.8525, 0.8226],
+        'Recall (Fraud)':    [0.89,   0.88,   0.86],
+        'Precision (Fraud)': [0.51,   0.41,   0.73]
+    })
 
     st.subheader("Performance Summary")
     st.dataframe(results_df.set_index('Model'), use_container_width=True)
@@ -248,8 +298,7 @@ elif page == "📊 Model Comparison":
                      color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C'])
         fig.update_layout(yaxis_range=[0.95, 1.0],
                           plot_bgcolor='white', showlegend=False)
-        fig.update_traces(text=results_df['ROC-AUC'].round(4),
-                          textposition='outside')
+        fig.update_traces(text=results_df['ROC-AUC'].round(4), textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
@@ -259,8 +308,7 @@ elif page == "📊 Model Comparison":
                      color_discrete_sequence=['#4267B2', '#44BBA4', '#E1306C'])
         fig.update_layout(yaxis_range=[0.6, 1.0],
                           plot_bgcolor='white', showlegend=False)
-        fig.update_traces(text=results_df['Avg Precision'].round(4),
-                          textposition='outside')
+        fig.update_traces(text=results_df['Avg Precision'].round(4), textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -283,7 +331,7 @@ elif page == "📊 Model Comparison":
         - Harder to explain to compliance officers
         """)
 
-    # NEW: SHAP Feature Importance chart
+    # ── SHAP Feature Importance ──────────────────────────────
     st.divider()
     st.subheader("🔍 XGBoost Feature Importance (SHAP)")
     st.markdown("*Top features driving fraud predictions — V14 is the strongest signal, consistent with published fraud detection research on this dataset*")
@@ -298,21 +346,135 @@ elif page == "📊 Model Comparison":
         shap_data, x='Mean |SHAP Value|', y='Feature',
         orientation='h',
         title='Top 10 Features Driving Fraud Predictions (XGBoost)',
-        color='Mean |SHAP Value|',
-        color_continuous_scale='Reds'
+        color='Mean |SHAP Value|', color_continuous_scale='Reds'
     )
-    fig.update_layout(
-        yaxis={'categoryorder': 'total ascending'},
-        plot_bgcolor='white',
-        height=400,
-        coloraxis_showscale=False
-    )
+    fig.update_layout(yaxis={'categoryorder': 'total ascending'},
+                      plot_bgcolor='white', height=400,
+                      coloraxis_showscale=False)
     st.plotly_chart(fig, use_container_width=True)
 
     col1, col2, col3 = st.columns(3)
     col1.info("**V14** is the top SHAP feature — consistently identified in fraud detection literature as a strong behavioral signal")
     col2.info("**Hour of Day** ranks 9th — engineered from raw Time field, confirms late-night fraud pattern")
     col3.info("**Amount Anomaly Score** (velocity-based z-score) captures card-testing behavior invisible in raw amounts")
+
+    # ── Precision-Recall Curve ───────────────────────────────
+    st.divider()
+    st.subheader("📈 Precision-Recall Curve")
+    st.markdown(
+        "*The area under this curve = Average Precision. "
+        "A perfect model hugs the top-right corner. "
+        "This is the correct evaluation curve for imbalanced fraud data — "
+        "unlike ROC-AUC, it is not inflated by the large number of true negatives.*"
+    )
+
+    if nn_proba is not None:
+        precision_vals, recall_vals, _ = precision_recall_curve(nn_labels, nn_proba)
+        ap_nn = average_precision_score(nn_labels, nn_proba)
+        baseline = nn_labels.mean()
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=recall_vals, y=precision_vals,
+            mode='lines',
+            name=f'Neural Network (AP={ap_nn:.3f})',
+            line=dict(color='#E1306C', width=2.5)
+        ))
+        fig.add_trace(go.Scatter(
+            x=[0.88], y=[0.853],
+            mode='markers+text',
+            name='XGBoost (AP=0.853) ✅ Production',
+            marker=dict(color='#44BBA4', size=14, symbol='star'),
+            text=['XGBoost AP=0.853'],
+            textposition='top right',
+            textfont=dict(size=11)
+        ))
+        fig.add_hline(
+            y=baseline, line_dash='dash', line_color='gray',
+            annotation_text=f'Random Classifier (AP={baseline:.3f})',
+            annotation_position='bottom right'
+        )
+        fig.update_layout(
+            xaxis_title='Recall (Fraud Caught)',
+            yaxis_title='Precision (Flagged = Actually Fraud)',
+            plot_bgcolor='white', height=420,
+            legend=dict(yanchor='top', y=0.99, xanchor='right', x=0.99),
+            yaxis=dict(range=[0, 1.05]),
+            xaxis=dict(range=[0, 1.05])
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "XGBoost is shown as a reference point (star marker) — "
+            "its AP of 0.853 exceeds the Neural Network's curve, "
+            "confirming it as the stronger production model for this dataset."
+        )
+    else:
+        st.warning("Model file not found — PR curve unavailable.")
+
+    # ── Confusion Matrix + Threshold Explorer ───────────────
+    st.divider()
+    st.subheader("🎯 Confusion Matrix — Threshold Explorer")
+    st.markdown(
+        "*Slide the threshold to see the real operational trade-off: "
+        "catching more fraud always means more false positives. "
+        "This is the decision a fraud team makes every day.*"
+    )
+
+    if nn_proba is not None:
+        threshold = st.slider(
+            "Decision Threshold",
+            min_value=0.1, max_value=0.9,
+            value=0.5, step=0.05,
+            help="Lower = catch more fraud but flag more legitimate transactions"
+        )
+
+        y_pred = (nn_proba >= threshold).astype(int)
+        tn, fp, fn, tp = confusion_matrix(nn_labels, y_pred).ravel()
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("✅ True Positives",  f"{tp:,}", help="Fraud correctly caught")
+        col2.metric("❌ False Negatives", f"{fn:,}",
+                    delta=f"-{fn} missed frauds", delta_color="inverse",
+                    help="Fraud missed — direct financial loss")
+        col3.metric("⚠️ False Positives", f"{fp:,}",
+                    delta=f"+{fp} blocked legit txns", delta_color="inverse",
+                    help="Legitimate transactions blocked — customer friction")
+        col4.metric("✅ True Negatives",  f"{tn:,}", help="Legitimate transactions correctly approved")
+
+        cm_df = pd.DataFrame(
+            [[tp, fn], [fp, tn]],
+            index=['Predicted Fraud', 'Predicted Legit'],
+            columns=['Actual Fraud', 'Actual Legit']
+        )
+        fig = px.imshow(
+            cm_df, text_auto=True,
+            color_continuous_scale='Reds',
+            title=f'Confusion Matrix at Threshold = {threshold}'
+        )
+        fig.update_layout(height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+        fraud_catch_rate   = tp / (tp + fn) if (tp + fn) > 0 else 0
+        false_positive_rate = fp / (fp + tn) if (fp + tn) > 0 else 0
+
+        if threshold <= 0.3:
+            st.warning(
+                f"⚠️ Aggressive threshold: catching {fraud_catch_rate:.1%} of fraud "
+                f"but blocking {fp:,} legitimate transactions "
+                f"({false_positive_rate:.2%} false positive rate). High customer friction."
+            )
+        elif threshold >= 0.7:
+            st.warning(
+                f"⚠️ Conservative threshold: only catching {fraud_catch_rate:.1%} of fraud. "
+                f"Missing {fn:,} fraudulent transactions. High financial exposure."
+            )
+        else:
+            st.success(
+                f"✅ Balanced threshold: catching {fraud_catch_rate:.1%} of fraud "
+                f"with {fp:,} false positives ({false_positive_rate:.2%} false positive rate)."
+            )
+    else:
+        st.warning("Model file not found — confusion matrix unavailable.")
 
 # ─────────────────────────────
 # Page 4: Risk Monitor
@@ -321,55 +483,6 @@ elif page == "🚨 Risk Monitor":
     st.title("🚨 Risk Monitor")
     st.markdown("*High-risk transactions flagged by the neural network*")
     st.divider()
-
-    @st.cache_data
-    def get_predictions():
-        feature_cols = [c for c in df.columns if c not in ['Class', 'Time', 'Amount']]
-        X = df[feature_cols]
-        y = df['Class']
-        _, X_test, _, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-
-        class FraudNet(nn.Module):
-            def __init__(self, input_dim):
-                super().__init__()
-                self.network = nn.Sequential(
-                    nn.Linear(input_dim, 256), nn.BatchNorm1d(256),
-                    nn.ReLU(), nn.Dropout(0.3),
-                    nn.Linear(256, 128), nn.BatchNorm1d(128),
-                    nn.ReLU(), nn.Dropout(0.2),
-                    nn.Linear(128, 64), nn.BatchNorm1d(64),
-                    nn.ReLU(), nn.Dropout(0.1),
-                    nn.Linear(64, 1), nn.Sigmoid()
-                )
-            def forward(self, x):
-                return self.network(x)
-
-        model_path = os.path.join(BASE_DIR, 'src/fraud_model.pth')
-        if not os.path.exists(model_path):
-            return None
-
-        device = torch.device('cpu')
-        model = FraudNet(input_dim=len(feature_cols)).to(device)
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        model.eval()
-
-        X_test_t = torch.FloatTensor(X_test.values)
-        with torch.no_grad():
-            proba = model(X_test_t).squeeze().cpu().numpy()
-
-        result = X_test.copy().reset_index(drop=True)
-        result['fraud_probability'] = proba
-        result['actual_fraud'] = y_test.values
-        result['risk_level'] = pd.cut(
-            proba, bins=[0, 0.3, 0.6, 0.8, 1.0],
-            labels=['Low', 'Medium', 'High', 'Critical']
-        )
-        return result
-
-    with st.spinner('Loading predictions...'):
-        preds = get_predictions()
 
     if preds is None:
         st.warning("Model file not found. Please ensure src/fraud_model.pth exists.")
@@ -405,12 +518,6 @@ elif page == "🚨 Risk Monitor":
             fig.update_layout(plot_bgcolor='white')
             st.plotly_chart(fig, use_container_width=True)
 
-        # NEW: Key insight callout
-        night_critical = preds[
-            (preds.fraud_probability > 0.8) &
-            (preds['hour_of_day'] >= 22) | (preds['hour_of_day'] <= 5)
-        ] if 'hour_of_day' in preds.columns else None
-
         st.success(
             "🔍 **Key Finding:** The model flags fraud most aggressively during late-night hours (10PM–5AM), "
             "consistent with automated card-testing behavior where fraudsters probe stolen credentials "
@@ -423,12 +530,11 @@ elif page == "🚨 Risk Monitor":
             ['amount_zscore', 'hour_of_day', 'is_night',
              'fraud_probability', 'actual_fraud']
         ].sort_values('fraud_probability', ascending=False).head(20)
-        critical.columns = ['Amount Anomaly Score', 'Hour', 'Late Night?', 'Fraud Prob', 'Actual Fraud']
-
-        # FIX: Removed background_gradient (requires matplotlib) — replaced with clean formatting
+        critical.columns = ['Amount Anomaly Score', 'Hour', 'Late Night?',
+                             'Fraud Prob', 'Actual Fraud']
         st.dataframe(
             critical.style.format({
-                'Fraud Prob': '{:.1%}',
+                'Fraud Prob':           '{:.1%}',
                 'Amount Anomaly Score': '{:.2f}'
             }),
             use_container_width=True
@@ -451,7 +557,7 @@ elif page == "🤖 AI Risk Narratives":
 
     if narratives:
         for n in narratives:
-            prob = n.get('fraud_probability', n.get('fraud_prob', 0))
+            prob  = n.get('fraud_probability', n.get('fraud_prob', 0))
             color = "🔴" if prob > 0.9 else "🟠"
             with st.expander(
                 f"{color} Transaction #{n['transaction']} — "

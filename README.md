@@ -31,6 +31,12 @@ This project uses the [ULB Credit Card Fraud Dataset](https://www.kaggle.com/dat
 
 ---
 
+## 💼 Business Impact
+
+At XGBoost's production threshold, this system would flag approximately **1,400 transactions per 1M** for review — a targeted queue that concentrates fraud cases while keeping false positive volume manageable for a fraud ops team. Compared to rule-based systems that flag 5–10x more transactions indiscriminately, a model-driven approach at this precision level reduces analyst workload while catching fraud earlier. The LLM risk narrative layer means a fraud analyst can triage each flagged case in seconds without needing to interpret raw feature values.
+
+---
+
 ## 🗂️ Project Modules
 
 ### 1. 🗄️ SQL Data Engineering Pipeline
